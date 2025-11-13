@@ -8,7 +8,7 @@ Projeto em Python para transcrever áudio em tempo real usando a biblioteca Spee
 - Microfone funcionando
 - Conexão com internet (para usar Google Speech Recognition)
 
-## 🚀 Instalação
+## 🚀 Instalação!
 
 1. Clone ou baixe este projeto
 
