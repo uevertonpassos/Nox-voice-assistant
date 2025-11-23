@@ -4,7 +4,7 @@ Projeto de Speech Recognition - Transcrição de Áudio em Tempo Real
 
 import os
 import sys
-
+import threading
 import speech_recognition as sr
 
 if sys.platform == "win32":
@@ -14,60 +14,90 @@ if sys.platform == "win32":
     ) else None
 
 
-def transcrever_audio():
-    r = sr.Recognizer()
+class VoiceAssistant:
+    def __init__(self, on_text_callback=None, on_status_callback=None):
+        self.r = sr.Recognizer()
+        self.is_running = False
+        self.on_text_callback = on_text_callback
+        self.on_status_callback = on_status_callback
+        self.thread = None
 
-    try:
-        mic_list = sr.Microphone.list_microphone_names()
-        if not mic_list:
-            print("ERRO: Nenhum microfone encontrado!")
-            print("Por favor, verifique se o microfone está conectado e funcionando.")
+    def _log(self, message):
+        print(message)
+        if self.on_status_callback:
+            self.on_status_callback(message)
+
+    def start(self):
+        if self.is_running:
             return
+        self.is_running = True
+        self.thread = threading.Thread(target=self._listen_loop)
+        self.thread.daemon = True
+        self.thread.start()
 
-        print(f"Microfone detectado: {mic_list[0]}")
-        with sr.Microphone() as source:
-            print("Ajustando ruido ambiente... Por favor, aguarde.")
-            r.adjust_for_ambient_noise(source, duration=1)
-            print("Microfone pronto! Pode falar...")
-            print("-" * 50)
+    def stop(self):
+        self.is_running = False
+        if self.thread:
+            self.thread.join(timeout=1)
+            self.thread = None
+        self._log("Parando assistente...")
 
-            try:
-                while True:
-                    print("\nEscutando...")
+    def _listen_loop(self):
+        try:
+            mic_list = sr.Microphone.list_microphone_names()
+            if not mic_list:
+                self._log("ERRO: Nenhum microfone encontrado!")
+                self.is_running = False
+                return
+
+            self._log(f"Microfone detectado: {mic_list[0]}")
+            with sr.Microphone() as source:
+                self._log("Ajustando ruido ambiente... Aguarde.")
+                self.r.adjust_for_ambient_noise(source, duration=1)
+                self._log("Microfone pronto! Pode falar...")
+                
+                while self.is_running:
+                    self._log("Escutando...")
                     try:
-                        audio = r.listen(source, timeout=5, phrase_time_limit=10)
+                        # Reduced timeout to allow checking self.is_running more often
+                        audio = self.r.listen(source, timeout=2, phrase_time_limit=10)
                     except sr.WaitTimeoutError:
-                        print("Tempo de espera esgotado. Tente falar novamente.")
                         continue
 
-                    print("Processando...")
+                    if not self.is_running:
+                        break
+
+                    self._log("Processando...")
 
                     try:
-                        texto = r.recognize_google(audio, language="pt-BR")
-                        print(f"\n[OK] Voce disse: {texto}")
-                        print("-" * 50)
+                        texto = self.r.recognize_google(audio, language="pt-BR")
+                        self._log(f"[OK] Voce disse: {texto}")
+                        if self.on_text_callback:
+                            self.on_text_callback(texto)
 
                     except sr.UnknownValueError:
-                        print("[ERRO] Nao foi possivel entender o audio")
-                        print("-" * 50)
+                        self._log("[ERRO] Nao foi possivel entender o audio")
 
                     except sr.RequestError as e:
-                        print(f"[ERRO] Erro ao processar: {e}")
-                        print("Verifique sua conexao com a internet.")
-                        print("-" * 50)
+                        self._log(f"[ERRO] Erro ao processar: {e}")
+                        
+        except OSError as e:
+            self._log(f"ERRO: Problema ao acessar o microfone: {e}")
+            self.is_running = False
+        except Exception as e:
+            self._log(f"ERRO inesperado: {e}")
+            self.is_running = False
 
-            except KeyboardInterrupt:
-                print("\n\nPrograma encerrado pelo usuario.")
-                sys.exit(0)
-
-    except OSError as e:
-        print(f"ERRO: Problema ao acessar o microfone: {e}")
-        print("Por favor, verifique se o microfone esta conectado e funcionando.")
-        sys.exit(1)
-    except Exception as e:
-        print(f"ERRO inesperado: {e}")
-        sys.exit(1)
-
+def transcrever_audio():
+    # Compatibility function for old usage
+    assistant = VoiceAssistant()
+    assistant.start()
+    try:
+        while True:
+            import time
+            time.sleep(0.1)
+    except KeyboardInterrupt:
+        assistant.stop()
 
 if __name__ == "__main__":
     print("=" * 50)
